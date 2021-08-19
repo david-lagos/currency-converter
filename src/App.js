@@ -108,10 +108,10 @@ function App() {
 
     tokenContract.approve(routerAddress, '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff').then(result => {
       provider.once(result.hash, () => {
-        if(token.symbol == token0.symbol){
+        if(token.symbol === token0.symbol){
           setIsFromAuthorized(true);
           console.log(`Your ${token.symbol} has been approved for spending`);
-        } else if (token.symbol == token1.symbol){
+        } else if (token.symbol === token1.symbol){
           setIsToAuthorized(true);
           console.log(`Your ${token.symbol} has been approved for spending`);
         }
@@ -163,13 +163,13 @@ function App() {
     const balance1 = parseFloat(ethers.utils.formatUnits(balance1Obj.toString(), token1.decimals)).toFixed(3);
     let allowance0, allowance1;
 
-    if(token0.symbol != 'WETH'){
+    if(token0.symbol !== 'WETH'){
       const allowance0Obj = await token0Contract.allowance(address, routerAddress);
       allowance0 = parseFloat(allowance0Obj.toString());
     } else {
       allowance0 = 1;
     }
-    if(token1.symbol != 'WETH') {
+    if(token1.symbol !== 'WETH') {
       const allowance1Obj = await token1Contract.allowance(address, routerAddress);
       allowance1 = parseFloat(allowance1Obj.toString());
     } else {
@@ -227,6 +227,22 @@ function App() {
             }
         });
         return price.data.ethereum.usd;
+    } else if (tokenId === '0x5592ec0cfb4dbc12d3ab100b257153436a1f0fea') {
+      let price = await axios.get("https://api.coingecko.com/api/v3/simple/price/", {
+            params: {
+                ids: 'dai',
+                vs_currencies: 'usd'
+            }
+        });
+        return  price.data.dai.usd
+    } else if (tokenId === '0x4dbcdf9b62e891a7cec5a2568c3f4faf9e8abe2b') {
+      let price = await axios.get("https://api.coingecko.com/api/v3/simple/price/", {
+            params: {
+                ids: 'usd-coin',
+                vs_currencies: 'usd'
+            }
+        });
+        return  price.data['usd-coin'].usd;
     } else {
         let price = await GetPoolData.getPriceData(tokenId.toLowerCase());  
         return parseFloat(parseFloat(price[0].priceUSD).toFixed(2));
@@ -238,6 +254,86 @@ function App() {
     const myShare = (myLiquidity / (myLiquidity + poolLiquidity) * 100);
     const myReturn = (myShare * pool.fees24h * days).toFixed(2);
     return myReturn;
+  }
+
+  const handleConfirmOnClick = async(e) => {
+
+    // Initialize variables
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const address = await signer.getAddress();
+    const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
+    const routerAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
+    const value0 = ethers.utils.parseUnits(fromAmount, token0.decimals);
+    const value1 = ethers.utils.parseUnits(toAmount, token1.decimals);
+    console.log(value0.toString());
+    console.log(value1.toString());
+
+    // Create contract instance
+    const routerContract = new ethers.Contract(
+      routerAddress,
+      [
+      'function swapETHForExactTokens(uint amountOut, address[] calldata path, address to, uint deadline) external payable returns (uint[] memory amounts)',
+      'function addLiquidityETH(address token, uint amountTokenDesired, uint amountTokenMin, uint amountETHMin, address to, uint deadline) external payable returns (uint amountToken, uint amountETH, uint liquidity)',
+      'function addLiquidity(address tokenA, address tokenB, uint amountADesired, uint amountBDesired, uint amountAMin, uint amountBMin, address to, uint deadline) external returns (uint amountA, uint amountB, uint liquidity)'
+      ],
+      signer
+    );
+
+    if(token0.symbol === 'WETH') {
+
+      // ETH is in FROM position
+      const addETH = await routerContract.addLiquidityETH(
+        token1.address,
+        value1.toString(),
+        0,
+        0,
+        address,
+        deadline,
+        { value: ethers.utils.parseEther(fromAmount), gasLimit: 2000000 }
+      );
+
+      provider.once(addETH.hash, (transaction) => {
+        console.log('Your transaction was confirmed');
+        console.log(transaction);
+      });
+
+    } else if(token1.symbol === 'WETH') {
+      
+      // ETH is in TO position
+      const addETH = await routerContract.addLiquidityETH(
+        token0.address,
+        value0.toString(),
+        0,
+        0,
+        address,
+        deadline,
+        { value: ethers.utils.parseEther(toAmount), gasLimit: 2000000 }
+      );
+
+      provider.once(addETH.hash, (transaction) => {
+        console.log('Your transaction has been confirmed');
+        console.log(transaction);
+      });
+
+    } else {
+
+      // ETH is neither in TO or FROM position
+      const addLiquidity = await routerContract.addLiquidity(
+        token0.address,
+        token1.address,
+        value0,
+        value1,
+        0,
+        0,
+        address,
+        deadline
+      );
+
+      provider.once(addLiquidity.hash, () => {
+        console.log('Your transaction was confirmed');
+      })
+    }
   }
 
   let needFromAuth = false;
@@ -278,7 +374,7 @@ function App() {
       <Authorize currency={toCurrency} needAuth={needToAuth} onClick={(e) => handleAuthOnClick(e, token1)}/>
     </div>
     : <div>
-      <Confirm onClick={(e) => console.log('This function will add liquidity')}/>
+      <Confirm onClick={(e) => handleConfirmOnClick(e)}/>
     </div>}
     </>
   );
